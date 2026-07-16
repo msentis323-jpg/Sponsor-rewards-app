@@ -92,6 +92,9 @@ interface WithdrawalDao {
     @Query("SELECT * FROM withdrawals WHERE userId = :userId ORDER BY requestedAt DESC")
     fun getWithdrawalsForUser(userId: Int): Flow<List<WithdrawalRequestEntity>>
 
+    @Query("SELECT * FROM withdrawals WHERE userId = :userId ORDER BY requestedAt DESC")
+    suspend fun getWithdrawalsForUserOneShot(userId: Int): List<WithdrawalRequestEntity>
+
     @Query("SELECT * FROM withdrawals ORDER BY requestedAt DESC")
     fun getAllWithdrawals(): Flow<List<WithdrawalRequestEntity>>
 

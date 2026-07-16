@@ -127,35 +127,47 @@ class SponsorRepository(private val database: AppDatabase) {
         val updatedUser = user.copy(walletBalance = user.walletBalance - amount)
         userDao.updateUser(updatedUser)
 
-        // Create withdrawal request
+        // Create withdrawal request with SUBMITTED status
         val request = WithdrawalRequestEntity(
             userId = userId,
             username = user.username,
             amount = amount,
             paymentMethod = method,
             accountDetails = details,
-            status = "PENDING"
+            status = "SUBMITTED"
         )
         withdrawalDao.insertWithdrawal(request)
         return Pair(true, "Withdrawal request submitted! $${String.format("%.2f", amount)} is pending review.")
     }
 
-    suspend fun approveWithdrawal(withdrawal: WithdrawalRequestEntity) {
-        if (withdrawal.status != "PENDING") return
-        val updated = withdrawal.copy(status = "APPROVED")
+    suspend fun updateWithdrawalStatus(withdrawal: WithdrawalRequestEntity, newStatus: String): Pair<Boolean, String> {
+        val currentStatus = withdrawal.status
+        if (currentStatus == newStatus) {
+            return Pair(false, "Status is already $newStatus")
+        }
+        if (currentStatus == "PAID" || currentStatus == "REJECTED") {
+            return Pair(false, "Cannot modify a transaction that is already $currentStatus")
+        }
+
+        val updated = withdrawal.copy(status = newStatus)
         withdrawalDao.updateWithdrawal(updated)
+
+        // If transitioning to REJECTED, refund user
+        if (newStatus == "REJECTED") {
+            val user = userDao.getUserByIdOneShot(withdrawal.userId)
+            if (user != null) {
+                userDao.updateUser(user.copy(walletBalance = user.walletBalance + withdrawal.amount))
+            }
+        }
+        return Pair(true, "Withdrawal status updated to $newStatus.")
+    }
+
+    suspend fun approveWithdrawal(withdrawal: WithdrawalRequestEntity) {
+        updateWithdrawalStatus(withdrawal, "APPROVED")
     }
 
     suspend fun rejectWithdrawal(withdrawal: WithdrawalRequestEntity) {
-        if (withdrawal.status != "PENDING") return
-        val updated = withdrawal.copy(status = "REJECTED")
-        withdrawalDao.updateWithdrawal(updated)
-
-        // Refund the user
-        val user = userDao.getUserByIdOneShot(withdrawal.userId)
-        if (user != null) {
-            userDao.updateUser(user.copy(walletBalance = user.walletBalance + withdrawal.amount))
-        }
+        updateWithdrawalStatus(withdrawal, "REJECTED")
     }
 
     // Seeding dummy data

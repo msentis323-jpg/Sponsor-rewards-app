@@ -290,7 +290,7 @@ fun AppBottomBar(
 
 @Composable
 fun LoginScreen(viewModel: AppViewModel, onNavigateToRegister: () -> Unit) {
-    var username by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
     Box(
@@ -350,10 +350,10 @@ fun LoginScreen(viewModel: AppViewModel, onNavigateToRegister: () -> Unit) {
                 )
 
                 OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Username") },
-                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = ForestGreen) },
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email Address") },
+                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = ForestGreen) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("username_input"),
@@ -388,7 +388,7 @@ fun LoginScreen(viewModel: AppViewModel, onNavigateToRegister: () -> Unit) {
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
-                    onClick = { viewModel.login(username, password) },
+                    onClick = { viewModel.login(email, password) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp)
@@ -587,13 +587,22 @@ fun UserHomeScreen(
     onNavigateToScreen: (String) -> Unit = {}
 ) {
     val currentUser by viewModel.currentUser.collectAsState()
-    val videos by viewModel.allVideos.collectAsState()
+    val videos by viewModel.campaignsList.collectAsState()
     val dailyWatches by viewModel.dailyWatchesCount.collectAsState()
 
-    // Always fetch daily watch count on display
+    // Dynamic countdown timer showing remaining time until the next daily reset (midnight of the next day)
+    var countdownText by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        importJavaUtilAndRunTimer { text ->
+            countdownText = text
+        }
+    }
+
+    // Always fetch daily watch count and refresh campaigns on display
     LaunchedEffect(currentUser) {
         currentUser?.let {
             viewModel.updateDailyWatchCount(it.id)
+            viewModel.loadCampaigns()
         }
     }
 
@@ -604,6 +613,54 @@ fun UserHomeScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Welcome and Username Card
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Welcome Back,",
+                        fontSize = 14.sp,
+                        color = GrayText,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = currentUser?.username ?: "Verified Earner",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Charcoal
+                    )
+                }
+
+                // Small quick indicator
+                Box(
+                    modifier = Modifier
+                        .background(ForestGreen.copy(alpha = 0.1f), CircleShape)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(ForestGreen, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Firestore Sync",
+                            color = ForestGreen,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
         // 1. Wallet Card (Charcoal high-contrast theme matching HTML bg-[#1C1B1F])
         item {
             Card(
@@ -712,7 +769,7 @@ fun UserHomeScreen(
             }
         }
 
-        // 2. Daily Activity Card with segmented progress bar
+        // 2. Daily Activity / Reset Countdown Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -730,32 +787,78 @@ fun UserHomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Daily Sponsored Videos",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Charcoal
-                        )
-
-                        val isCompleted = dailyWatches >= 3
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    if (isCompleted) LightMint else Color(0xFFFFFDE7),
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
+                        Column {
                             Text(
-                                text = if (isCompleted) "3 / 3 COMPLETED" else "$dailyWatches / 3 COMPLETED",
-                                color = if (isCompleted) ForestGreen else Color(0xFFE65100),
+                                text = "Daily Reset Countdown",
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = GrayText
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Schedule,
+                                    contentDescription = "Countdown Timer",
+                                    tint = ForestGreen,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = countdownText.ifEmpty { "00:00:00" },
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Charcoal
+                                )
+                            }
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "Daily Limit",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GrayText
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(LightMint, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "3 VIDEOS / 24 HRS",
+                                    color = ForestGreen,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    // Segmented/Visual representation of watches
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Today's Progress",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Charcoal
+                        )
+
+                        Text(
+                            text = "$dailyWatches of 3 Completed",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (dailyWatches >= 3) ForestGreen else GoldAmber
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Progress Bar matching HTML design (h-3 bg-slate-100 rounded-full flex)
                     Box(
@@ -788,7 +891,7 @@ fun UserHomeScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Watch helper banner
+                    // Dynamic watch helper or status banner
                     if (dailyWatches < 3) {
                         Button(
                             onClick = {
@@ -816,7 +919,7 @@ fun UserHomeScreen(
                                         .background(PureWhite.copy(alpha = 0.2f), CircleShape)
                                         .padding(horizontal = 10.dp, vertical = 4.dp)
                                 ) {
-                                    Text("+$2.00 avg", color = PureWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("+$0.75 avg", color = PureWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -831,7 +934,7 @@ fun UserHomeScreen(
                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = ForestGreen)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "Daily limit reached! Come back tomorrow for more sponsor rewards.",
+                                "Daily limit reached! Come back in $countdownText.",
                                 color = ForestGreen,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
@@ -889,6 +992,32 @@ fun UserHomeScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * Clean inline helper to calculate countdown until midnight and execute dynamic updates
+ */
+private suspend fun importJavaUtilAndRunTimer(onUpdate: (String) -> Unit) {
+    while (true) {
+        val now = java.util.Calendar.getInstance()
+        val resetTime = java.util.Calendar.getInstance().apply {
+            add(java.util.Calendar.DAY_OF_YEAR, 1)
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val diff = resetTime.timeInMillis - now.timeInMillis
+        if (diff > 0) {
+            val hours = diff / (3600 * 1000)
+            val minutes = (diff % (3600 * 1000)) / (60 * 1000)
+            val seconds = (diff % (60 * 1000)) / 1000
+            onUpdate(String.format("%02d:%02d:%02d", hours, minutes, seconds))
+        } else {
+            onUpdate("00:00:00")
+        }
+        kotlinx.coroutines.delay(1000L)
     }
 }
 
@@ -1034,7 +1163,7 @@ fun SponsoredVideoItemCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Watch ad", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Watch Video", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1328,7 +1457,10 @@ fun WithdrawalHistoryItem(wr: WithdrawalRequestEntity) {
 
                 val badgeColor = when (wr.status) {
                     "APPROVED" -> Color(0xFF2E7D32)
+                    "PAID" -> Color(0xFF1B5E20)
                     "REJECTED" -> Color(0xFFD32F2F)
+                    "UNDER_REVIEW" -> Color(0xFFEF6C00)
+                    "SUBMITTED" -> Color(0xFF1565C0)
                     else -> GoldAmber
                 }
 
@@ -1338,7 +1470,10 @@ fun WithdrawalHistoryItem(wr: WithdrawalRequestEntity) {
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = wr.status,
+                        text = when (wr.status) {
+                            "PENDING" -> "SUBMITTED"
+                            else -> wr.status
+                        },
                         color = badgeColor,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -1856,7 +1991,7 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                     usersCount = users.size,
                     advertisersCount = advertisers.size,
                     videosCount = videos.size,
-                    pendingWithdrawalsCount = withdrawals.filter { it.status == "PENDING" }.size
+                    pendingWithdrawalsCount = withdrawals.filter { it.status == "PENDING" || it.status == "SUBMITTED" || it.status == "UNDER_REVIEW" }.size
                 )
                 "advertisers" -> AdminAdvertisersPanel(
                     advertisers = advertisers,
@@ -1875,8 +2010,7 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                 )
                 "withdrawals" -> AdminWithdrawalsPanel(
                     withdrawals = withdrawals,
-                    onApprove = { viewModel.approveWithdrawal(it) },
-                    onReject = { viewModel.rejectWithdrawal(it) }
+                    onStatusUpdate = { wr, status -> viewModel.updateWithdrawalStatusByAdmin(wr, status) }
                 )
                 "users" -> AdminUsersPanel(
                     users = users,
@@ -2291,8 +2425,7 @@ fun AdminVideosPanel(
 @Composable
 fun AdminWithdrawalsPanel(
     withdrawals: List<WithdrawalRequestEntity>,
-    onApprove: (WithdrawalRequestEntity) -> Unit,
-    onReject: (WithdrawalRequestEntity) -> Unit
+    onStatusUpdate: (WithdrawalRequestEntity, String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Text("Payout Approvals Hub", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(bottom = 12.dp))
@@ -2339,51 +2472,102 @@ fun AdminWithdrawalsPanel(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                val badgeColor = when (wr.status) {
+                                    "APPROVED" -> Color(0xFF2E7D32)
+                                    "PAID" -> Color(0xFF1B5E20)
+                                    "REJECTED" -> Color(0xFFD32F2F)
+                                    "UNDER_REVIEW" -> Color(0xFFEF6C00)
+                                    "SUBMITTED" -> Color(0xFF1565C0)
+                                    else -> GoldAmber
+                                }
+
                                 Box(
                                     modifier = Modifier
                                         .background(
-                                            when (wr.status) {
-                                                "APPROVED" -> Color(0xFF2E7D32).copy(alpha = 0.15f)
-                                                "REJECTED" -> Color(0xFFC62828).copy(alpha = 0.15f)
-                                                else -> GoldAmber.copy(alpha = 0.15f)
-                                            },
+                                            badgeColor.copy(alpha = 0.15f),
                                             RoundedCornerShape(8.dp)
                                         )
                                         .padding(horizontal = 10.dp, vertical = 4.dp)
                                 ) {
                                     Text(
-                                        text = wr.status,
-                                        color = when (wr.status) {
-                                            "APPROVED" -> Color(0xFF2E7D32)
-                                            "REJECTED" -> Color(0xFFC62828)
-                                            else -> GoldAmber
+                                        text = when (wr.status) {
+                                            "PENDING" -> "SUBMITTED"
+                                            else -> wr.status
                                         },
+                                        color = badgeColor,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
 
-                                if (wr.status == "PENDING") {
+                                // Interactive action buttons based on status
+                                if (wr.status != "PAID" && wr.status != "REJECTED") {
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        // Reject button is always available for active states
                                         Button(
-                                            onClick = { onReject(wr) },
+                                            onClick = { onStatusUpdate(wr, "REJECTED") },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
                                         ) {
-                                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(12.dp))
                                             Spacer(modifier = Modifier.width(2.dp))
-                                            Text("Reject", fontSize = 11.sp)
+                                            Text("Reject", fontSize = 10.sp)
                                         }
 
-                                        Button(
-                                            onClick = { onApprove(wr) },
-                                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreen),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
-                                        ) {
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(2.dp))
-                                            Text("Approve", fontSize = 11.sp)
+                                        when (wr.status) {
+                                            "PENDING", "SUBMITTED" -> {
+                                                Button(
+                                                    onClick = { onStatusUpdate(wr, "UNDER_REVIEW") },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF6C00)),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Pending, contentDescription = null, modifier = Modifier.size(12.dp))
+                                                    Spacer(modifier = Modifier.width(2.dp))
+                                                    Text("Review", fontSize = 10.sp)
+                                                }
+                                            }
+                                            "UNDER_REVIEW" -> {
+                                                Button(
+                                                    onClick = { onStatusUpdate(wr, "APPROVED") },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreen),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(12.dp))
+                                                    Spacer(modifier = Modifier.width(2.dp))
+                                                    Text("Approve & Pay", fontSize = 10.sp)
+                                                }
+                                            }
+                                            "APPROVED" -> {
+                                                Button(
+                                                    onClick = { onStatusUpdate(wr, "PAID") },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Paid, contentDescription = null, modifier = Modifier.size(12.dp))
+                                                    Spacer(modifier = Modifier.width(2.dp))
+                                                    Text("Mark Paid", fontSize = 10.sp)
+                                                }
+                                            }
                                         }
+                                    }
+                                } else {
+                                    // Terminal state
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (wr.status == "PAID") Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                            contentDescription = null,
+                                            tint = badgeColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = if (wr.status == "PAID") "Settled" else "Cancelled",
+                                            fontSize = 11.sp,
+                                            color = badgeColor,
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     }
                                 }
                             }
